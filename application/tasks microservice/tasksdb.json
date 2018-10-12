@@ -1,0 +1,34 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "text": "Plan one year ahead!!",
+      "user": 4
+    },
+    {
+      "id": 2,
+      "text": "Mow the lawm",
+      "user": 2
+    },
+    {
+      "id": 3,
+      "text": "Fix the fridge",
+      "user": 3
+    },
+    {
+      "id": 4,
+      "text": "Call James",
+      "user": 2
+    },
+    {
+      "id": 5,
+      "text": "Pick up the kids",
+      "user": 1
+    },
+    {
+      "id": 6,
+      "text": "Go to the Gym",
+      "user": 1
+    }
+  ]
+}

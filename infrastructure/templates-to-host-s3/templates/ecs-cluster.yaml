@@ -1,0 +1,77 @@
+Description: >
+  Create ECS Cluster resources for Deployment on ECS.
+
+Parameters:
+  Param1:
+    Type: String
+
+  Param2:
+    Type: String
+
+  Account:
+    Description: AWS AccountNumber for docker image
+    Type: Number
+
+  Listener:
+    Type: String
+
+  Port:
+    Type: Number
+
+  PathPattern:
+    Type: String
+
+  LoadBalancerArn:
+    Type: String
+
+  Cluster:
+    Type: String
+
+  Subnet1:
+    Type: AWS::EC2::Subnet::Id
+
+  Subnet2:
+    Type: AWS::EC2::Subnet::Id
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  VpcCIDR:
+    Type: String
+
+  Tag:
+    Type: String
+    Default: latest
+
+  Repository:
+    Type: String 
+
+  TemplateBucket:
+    Type: String
+    Description: >
+      S3 Bucket used for nested templates
+
+Resources:
+  Service:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplateBucket}/templates/service.yaml
+      Parameters:
+        Listener: !Ref Listener
+        PathPattern: !Ref PathPattern
+        Cluster: !Ref Cluster
+        LoadBalancer: !Ref LoadBalancerArn
+        Port: !Ref Port
+        Tag: !Ref Tag
+        DesiredCount: "1"
+        VpcId: !Ref VpcId
+        Account: !Ref Account
+        Repository: !Ref Repository
+        Identifier: "Code1"
+        IsProduction: False
+        Param1: !Ref Param1
+        Param2: !Ref Param2
+
+Outputs:
+  ClusterName:
+      Value: !Ref Cluster

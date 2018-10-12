@@ -1,0 +1,236 @@
+#  Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+#  the License. A copy of the License is located at
+#      http://aws.amazon.com/apache2.0/
+#  or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+#  CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and
+#  limitations under the License.
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CodePipeline for microservice deployment
+Parameters:   
+  InfrastructureTemplateBucket:
+    Type: String
+    Description: Name of S3 bucket that hosts the microservice infrastructure templates
+  InfrastructureTemplateArchive:
+    Type: String
+    Description: Name of S3 object that contains the microservice infrastructure templates
+  TemplateBucket:
+    Description: Name of S3 bucket that contains the admin templates
+    Type : 'AWS::SSM::Parameter::Value<String>'
+    Default: TemplateBucket
+  EcsCfnStackName:
+    Description: Name of ECS Cloudformation stack
+    Type : 'AWS::SSM::Parameter::Value<String>'
+    Default: Cluster
+  ServiceName:
+    Description: Name of the Project
+    Type: String 
+  ArtifactBucket:
+    Description: S3 bucket which will hold the artifacts
+    Type : 'AWS::SSM::Parameter::Value<String>'
+    Default: ArtifactBucket
+  TestAccount:
+    Description: AWS AccountNumber for test
+    Type : 'AWS::SSM::Parameter::Value<String>'
+    Default: TestAccount
+  ProductionAccount:
+    Description: AWS AccountNumber for production
+    Type : 'AWS::SSM::Parameter::Value<String>'
+    Default: ProductionAccount
+  CMKARN:
+    Description: ARN of the KMS CMK creates in Tools account
+    Type : 'AWS::SSM::Parameter::Value<String>'
+    Default: CMKARN
+  AdminStackName:
+    Description: Name of admin stack
+    Type : 'AWS::SSM::Parameter::Value<String>'    
+    Default: AdminStackName
+Resources:
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: !Ref ServiceName
+      EncryptionKey: !Ref CMKARN
+      ServiceRole: !Sub ${AdminStackName}-cb-role
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: linuxContainer
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/docker:1.12.1
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: ServiceName
+            Value: !Ref ServiceName
+          - Name: TestAccount
+            Value: !Ref TestAccount
+          - Name: ArtifactBucket
+            Value: !Ref ArtifactBucket
+          - Name: TemplateBucket
+            Value: !Ref TemplateBucket
+          - Name: InfrastructureTemplateBucket
+            Value: !Ref InfrastructureTemplateBucket
+          - Name: ProductionAccount
+            Value: !Ref ProductionAccount
+      Name: !Sub ${AdminStackName}-${ServiceName}-ecs-codebuildproject
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - apt-get update && apt-get -y install python-pip
+                - pip install --upgrade python
+                - pip install --upgrade awscli
+                - pip install boto3
+            build:
+              commands:
+                - python deploy-cfn.py $ServiceName $TestAccount $ProductionAccount $TemplateBucket $InfrastructureTemplateBucket $AWS_DEFAULT_REGION
+                - aws cloudformation describe-stacks --stack-name "$ServiceName-test-resources" --query Stacks[0].[Outputs][] > /tmp/cfn-output.json
+                - python generate-params.py
+          artifacts:
+            files:
+              - /tmp/cfn-output.json
+              - 03.prod-account-roles.yaml
+              - 04.per-service-bucket-policy.yaml
+              - 06.team-non-prod-permissions.yaml
+              - pipeline.yaml
+            discard-paths: yes
+
+      TimeoutInMinutes: 10
+      Tags:
+        - Key: Name
+          Value: !Ref ServiceName
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AdminStackName}-pipeline-role"
+      Name: !Sub "${ServiceName}-${AdminStackName}-pipeline"
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: App
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: S3
+              Configuration:
+                S3Bucket: !Ref TemplateBucket
+                S3ObjectKey: templates.zip
+              OutputArtifacts:
+                - Name: SCCheckoutArtifact
+              RunOrder: 1
+        -
+          Name: DeployTestAccountResources
+          Actions:
+            - Name: DeployInfrastructure
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SCCheckoutArtifact
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: DeployProductionAccountResources
+          Actions:
+            - Name: DeployInfrastructure
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                StackName: !Sub "${ServiceName}-prod-resources"
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: BuildOutput::03.prod-account-roles.yaml
+                ParameterOverrides: !Sub |
+                  {
+                      "S3Bucket" : { "Fn::GetParam" : [ "BuildOutput", "cfn-output.json", "ArtifactBucket" ] },
+                      "TestAccount": "${TestAccount}",
+                      "Repository": "${ServiceName}",
+                      "CMKARN": { "Fn::GetParam" : [ "BuildOutput", "cfn-output.json", "CMK" ] }
+                  }
+                ChangeSetName: admin-ecs-prod
+                ActionMode: CREATE_UPDATE
+                #RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/cloudformationdeployer-role
+                RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/${AdminStackName}-cfdeployer-role
+
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+              RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/${AdminStackName}-cc-role
+        - Name: ConfigureTestAccount
+          Actions:
+            - Name: DeployArtifactBucketPolicy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                StackName: !Sub "${ServiceName}-bucket-policy"
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: BuildOutput::04.per-service-bucket-policy.yaml
+                ParameterOverrides: !Sub |
+                  {
+                      "ArtifactBucket" : { "Fn::GetParam" : [ "BuildOutput", "cfn-output.json", "ArtifactBucket" ] },
+                      "TestAccount": "${TestAccount}",
+                      "InfrastructureTemplateBucket": "${InfrastructureTemplateBucket}",
+                      "Repository": "${ServiceName}",
+                      "ProductionAccount": "${ProductionAccount}"
+                  }
+                ChangeSetName: admin-ecs-prod
+                ActionMode: CREATE_UPDATE
+                #RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/cloudformationdeployer-role
+                RoleArn: !Sub arn:aws:iam::${TestAccount}:role/${AdminStackName}-cfdeployer-role
+
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1        
+        - Name: TestPipeline
+          Actions:
+            - Name: DeployPipeline
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                StackName: !Sub "${ServiceName}-test-pipeline"
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: BuildOutput::pipeline.yaml
+                ParameterOverrides: !Sub |
+                  {                                   
+                      "ServiceName": "${ServiceName}",
+                      "InfrastructureTemplateBucket": "${InfrastructureTemplateBucket}",
+                      "InfrastructureTemplateArchive": "${InfrastructureTemplateArchive}",
+                      "TemplateBucket": "${TemplateBucket}",
+                      "EcsCfnStackName": "${EcsCfnStackName}",
+                      "ArtifactBucket": { "Fn::GetParam" : [ "BuildOutput", "cfn-output.json", "ArtifactBucket" ] },
+                      "EcrRepository": "${ServiceName}",                      
+                      "TestAccount": "${TestAccount}",
+                      "CMKARN": { "Fn::GetParam" : [ "BuildOutput", "cfn-output.json", "CMK" ] },
+                      "ProductionAccount": "${ProductionAccount}"
+                  }
+                ChangeSetName: admin-ecs-prod
+                ActionMode: CREATE_UPDATE                
+                RoleArn: !Sub arn:aws:iam::${TestAccount}:role/${AdminStackName}-cfdeployer-role
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+        EncryptionKey:
+          Id: !Ref CMKARN
+          Type: KMS

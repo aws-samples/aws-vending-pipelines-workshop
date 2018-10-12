@@ -1,0 +1,37 @@
+#  Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+#  the License. A copy of the License is located at
+#      http://aws.amazon.com/apache2.0/
+#  or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+#  CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and
+#  limitations under the License.
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template used by SC to launch ECS microservice
+Parameters:
+  ServiceName:
+    Description: Name of the microservice. This must match the CodeCommit repo name
+    Type: String
+  InfrastructureTemplateBucket:
+    Type: String
+    Description: Name of S3 bucket that hosts the microservice infrastructure templates
+  InfrastructureTemplateArchive:
+    Type: String
+    Description: Name of S3 object that contains the microservice infrastructure templates
+Resources:
+  EcsMicroserviceStack:
+    Type: "AWS::CloudFormation::Stack"
+    Properties:
+      Parameters:        
+        ServiceName: !Ref ServiceName
+        InfrastructureTemplateBucket: !Ref InfrastructureTemplateBucket
+        InfrastructureTemplateArchive: !Ref InfrastructureTemplateArchive
+      TemplateURL: https://s3.amazonaws.com/vending-pipelines-assets/templates/microservice-resources.yml
+      TimeoutInMinutes: 15
+Outputs: 
+  PathPattern:
+    Description: API Path pattern for microservice
+    Value: "Path to access API or App like /api/service name/*"
+  PARAMS:
+    Description: param value for dev and prod stack JSON configuration files under service/<microservice>
+    Value: "You can set key/values param1 and param2 to your container as environment variables"

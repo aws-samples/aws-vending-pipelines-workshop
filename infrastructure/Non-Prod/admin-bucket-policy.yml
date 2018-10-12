@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates Bucket policy for codepipeline Artifact bucket
+Parameters:  
+  ProductionAccount:
+    Description: AWS AccountNumber for production
+    Type : 'AWS::SSM::Parameter::Value<String>'
+    Default: ProductionAccount
+  ArtifactBucket:
+    Description: S3 bucket which will hold the artifacts
+    Type : 'AWS::SSM::Parameter::Value<String>'
+    Default: ArtifactBucket
+  ServiceName:
+    Description: Name of the microservice
+    Type : 'AWS::SSM::Parameter::Value<String>'    
+    Default: AdminStackName
+Resources:
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Statement:
+          -
+            Action:
+              - s3:*
+            Effect: Allow
+            Resource:
+              - !Sub arn:aws:s3:::${ArtifactBucket}
+              - !Sub arn:aws:s3:::${ArtifactBucket}/*
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/${ServiceName}-cfdeployer-role
+                - !Sub arn:aws:iam::${ProductionAccount}:role/${ServiceName}-cc-role
+                - !Sub arn:aws:iam::${ProductionAccount}:role/${ServiceName}-cfdeployer-role
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/${ServiceName}-cb-role

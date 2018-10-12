@@ -1,0 +1,20 @@
+Description: "Create SSM Parameters"
+Resources:
+  Priority:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "Priority"
+      Type: "String"
+      Value: "1"  
+  TestAccount:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "TestAccount"
+      Type: "String"
+      Value: "444769275529"    
+  AdminStackNameParam:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "AdminStackName"
+      Type: "String"
+      Value: "admin-resources"

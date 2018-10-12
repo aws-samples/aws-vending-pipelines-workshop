@@ -1,0 +1,7 @@
+{
+  "Parameters" : {                     
+                      "PathPattern": "/api/tasks/*",                  
+                      "Param1": "",
+                      "Param2": ""
+                  }
+}

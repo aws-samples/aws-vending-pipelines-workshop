@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Roles to be assumed by teams in Non-prod account
+Parameters:
+  ServiceName:
+    Description: Name of service the team is working on
+    Type: String
+  ServiceTeamRoleName:
+    Description: Name of IAM role already assigned to the service team
+    Type: String
+Resources:
+  DevTeamPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      Roles:
+        - !Ref ServiceTeamRoleName
+      ManagedPolicyName: !Sub ${ServiceName}-dev-team-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+            -
+              Effect: Deny
+              Action:
+                - cloudformation:*
+              Resource: !Sub "arn:aws:cloudformation:*:${AWS::AccountId}:stack/admin-*"
+            -
+              Effect: Allow
+              Action:
+                - cloudformation:*
+              Resource: !Sub "arn:aws:cloudformation:*:${AWS::AccountId}:stack/${ServiceName}-*"
+            -
+              Effect: Allow
+              Action:
+                - cloudformation:Get*
+              Resource: !Sub "arn:aws:cloudformation:*:${AWS::AccountId}:stack/SC-*"
+            -
+              Effect: Allow
+              Action:
+                - codecommit:*
+              Resource: !Sub "arn:aws:codecommit:*:${AWS::AccountId}:${ServiceName}*"
+            -
+              Effect: Allow
+              Action:
+                - codebuild:*
+              Resource: !Sub "arn:aws:codebuild:*:${AWS::AccountId}:project/${ServiceName}*"
+            -
+              Effect: Allow
+              Action:
+                - codebuild:listprojects
+                - cloudformation:CreateUploadBucket
+                - cloudformation:GetTemplateSummary
+                - cloudformation:ListStacks
+                - cloudformation:DescribeStacks
+                - codepipeline:ListPipelines
+                - cloudformation:GetTemplateSummary
+                - servicecatalog:DescribeProduct
+                - servicecatalog:DescribeProductView
+                - servicecatalog:DescribeProvisioningParameters
+                - servicecatalog:ListLaunchPaths
+                - servicecatalog:ProvisionProduct
+                - servicecatalog:SearchProducts
+              Resource: "*"
+            -
+              Effect: Allow
+              Action:
+                - servicecatalog:DescribeProvisionedProduct
+                - servicecatalog:DescribeRecord
+                - servicecatalog:ListRecordHistory
+                - servicecatalog:ScanProvisionedProducts
+                - servicecatalog:TerminateProvisionedProduct
+                - servicecatalog:UpdateProvisionedProduct
+                - servicecatalog:SearchProvisionedProducts
+                - servicecatalog:CreateProvisionedProductPlan
+                - servicecatalog:DescribeProvisionedProductPlan
+                - servicecatalog:ExecuteProvisionedProductPlan
+                - servicecatalog:DeleteProvisionedProductPlan
+                - servicecatalog:ListProvisionedProductPlans
+              Resource: "*"
+              Condition:
+                  StringEquals:
+                      "servicecatalog:userLevel": "self"
+            -
+              Effect: Allow
+              Action:
+                - s3:*
+              Resource:
+                - "arn:aws:s3:::cf-templates-*"
+                - "arn:aws:s3:::cf-templates-*/*"
+                - "arn:aws:s3:::sc-*"
+                - "arn:aws:s3:::sc-*/*"
+            -
+              Effect: Deny
+              Action:
+                - codepipeline:PutApprovalResult
+                - codepipeline:UpdatePipeline
+                - codepipeline:CreatePipeline
+                - codepipeline:DeletePipeline
+              Resource: "*"
+            -
+              Effect: Allow
+              Action:
+                - codepipeline:*
+              Resource: !Sub "arn:aws:codepipeline:*:${AWS::AccountId}:${ServiceName}-*"

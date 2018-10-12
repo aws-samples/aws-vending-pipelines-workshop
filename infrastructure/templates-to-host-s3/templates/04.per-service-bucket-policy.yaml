@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates a CMK in KMS and grants access to other accounts
+Parameters:
+  TestAccount:
+    Description: AWS AccountNumber for test
+    Type: Number
+  ProductionAccount:
+    Description: AWS AccountNumber for production
+    Type: Number
+  ArtifactBucket:
+    Type: String
+  InfrastructureTemplateBucket:
+    Type: String
+  Repository:
+    Type: String  
+Resources:
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Statement:
+          -
+            Action:
+              - s3:*
+            Effect: Allow
+            Resource:
+              - !Sub arn:aws:s3:::${ArtifactBucket}
+              - !Sub arn:aws:s3:::${ArtifactBucket}/*
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${TestAccount}:role/${Repository}-cfdeployer-role
+                - !Sub arn:aws:iam::${ProductionAccount}:role/${Repository}-cc-role
+                - !Sub arn:aws:iam::${ProductionAccount}:role/${Repository}-cfdeployer-role
+                - !Sub arn:aws:iam::${TestAccount}:role/${Repository}-cb-role
+  InfraBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref InfrastructureTemplateBucket
+      PolicyDocument:
+        Statement:
+          -
+            Action:
+              - s3:*
+            Effect: Allow
+            Resource:
+              - !Sub arn:aws:s3:::${InfrastructureTemplateBucket}
+              - !Sub arn:aws:s3:::${InfrastructureTemplateBucket}/*
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${TestAccount}:role/${Repository}-cfdeployer-role
+                - !Sub arn:aws:iam::${ProductionAccount}:role/${Repository}-cc-role
+                - !Sub arn:aws:iam::${ProductionAccount}:role/${Repository}-cfdeployer-role
+                - !Sub arn:aws:iam::${TestAccount}:role/${Repository}-cb-role

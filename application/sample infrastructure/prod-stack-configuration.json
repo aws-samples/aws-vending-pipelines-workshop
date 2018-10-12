@@ -1,0 +1,6 @@
+{
+  "Parameters" : {
+    "MinCapacity" : "15",
+    "MaxCapacity" : "45"
+  }
+}

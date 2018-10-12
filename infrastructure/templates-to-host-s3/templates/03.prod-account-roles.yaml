@@ -1,0 +1,170 @@
+#  Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+#  the License. A copy of the License is located at
+#      http://aws.amazon.com/apache2.0/
+#  or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+#  CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and
+#  limitations under the License.
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Role to be assumed by CodePipeline service cross account
+Parameters:
+  S3Bucket:
+    Description: S3 Bucket in Tools Account, which holds the artifacts built by codebuild
+    Type: String
+  TestAccount:
+    Description: AWS AccountNumber for test account
+    Type: Number
+  Repository:
+    Type: String
+  CMKARN:
+    Description: ARN of the KMS CMK creates in Tools account
+    Type: String
+Resources:
+  CFRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Repository}-cc-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Ref TestAccount
+            Action:
+              - sts:AssumeRole
+      Path: /
+  CFPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${Repository}-cc-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - cloudformation:*
+              - s3:*
+              - iam:PassRole
+              - lambda:*
+              - apigateway:*
+              - logs:*
+              - codepipeline:*
+              - iam:ListRoles
+              - codecommit:List*
+              - codecommit:Get*
+              - codecommit:GitPull
+              - codecommit:UploadArchive
+              - codecommit:CancelUploadArchive
+              - codebuild:BatchGetBuilds
+              - codebuild:StartBuild
+              - lambda:*
+              - logs:*
+            Resource: "*"
+          -
+            Effect: Allow
+            Action:
+              - kms:*
+            Resource: !Ref CMKARN
+      Roles:
+        -
+          !Ref CFRole
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Repository}-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+  CFDeployerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Repository}-cfdeployer-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+  CFDeployerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${Repository}-cfdeployer-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - lambda:AddPermission
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+              - lambda:InvokeFunction
+              - lambda:RemovePermission
+              - lambda:UpdateFunctionCode
+              - lambda:GetFunctionConfiguration
+              - lambda:GetFunction
+              - lambda:UpdateFunctionConfiguration
+              - events:* # Required for the sample lambda function to work
+              - apigateway:*              
+              - cloudformation:*
+              - ecs:*
+              - dynamodb:*
+              - ssm:GetParameters
+              - ecr:*
+              - iam:*
+              - ec2:*
+              - elasticloadbalancing:*
+              - application-autoscaling:*
+              - autoscaling:*
+              - s3:*
+            Resource: "*"
+          -
+            Effect: Allow
+            Action:              
+              - ecr:*              
+            Resource: !Sub "arn:aws:ecr:${AWS::Region}:${TestAccount}:repository/${Repository}"  
+          -
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetBucketPolicy
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+             - !Join ['',['arn:aws:s3:::',!Ref S3Bucket, '/*']]
+             - !Join ['',['arn:aws:s3:::',!Ref S3Bucket]]
+          -
+            Effect: Allow
+            Action:
+              - dynamodb:*
+            Resource:
+             - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Repository}*'
+      Roles:
+        -
+          !Ref CFDeployerRole
+
+  

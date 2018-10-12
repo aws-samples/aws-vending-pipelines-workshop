@@ -1,0 +1,249 @@
+#  Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+#  the License. A copy of the License is located at
+#      http://aws.amazon.com/apache2.0/
+#  or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+#  CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and
+#  limitations under the License.
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CodePipeline for serverless app
+Parameters:
+  InfrastructureTemplateBucket:
+    Type: String
+    Description: Name of S3 bucket that hosts the microservice infrastructure templates
+  InfrastructureTemplateArchive:
+    Type: String
+    Description: Name of S3 object that contains the microservice infrastructure templates
+  TemplateBucket:
+    Type: String
+    Default: vending-pipelines-assets
+  ServiceName:
+    Description: Name of the Project
+    Type: String 
+  ArtifactBucket:
+    Description: S3 Bucket, which will hold the artifacts
+    Type: String
+    Default: admin-resources-artifactbucket-1dk38ximekq4s
+  TestAccount:
+    Description: AWS AccountNumber for test
+    Type: Number
+    Default: 444769275529
+  ProductionAccount:
+    Description: AWS AccountNumber for production
+    Type: Number
+    Default: 813745479501
+  CMKARN:
+    Description: ARN of the KMS CMK creates in Tools account
+    Type: String
+Resources:
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref ServiceName
+      Description: !Ref ServiceName
+      EncryptionKey: !Ref CMKARN
+      ServiceRole: !Sub "${ServiceName}-cb-role"
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: linuxContainer
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/python:2.7.12
+        EnvironmentVariables:
+          - Name: S3Bucket
+            Value: !Ref ArtifactBucket
+          - Name: KMSKey
+            Value: !Ref CMKARN
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.1
+          phases:            
+            install:
+              commands:
+                - pip install --upgrade awscli
+            build:
+              commands:
+                - aws cloudformation package --template-file template.yaml --s3-bucket $S3Bucket --output-template-file samtemplate.yaml              
+          artifacts:
+            files: 
+              - samtemplate.yaml              
+            discard-paths: yes
+
+      TimeoutInMinutes: 10
+      Tags:
+        - Key: Name
+          Value: !Ref ServiceName
+ 
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline    
+    Properties:
+      RoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ServiceName}-pipeline-role"
+      Name: !Ref AWS::StackName
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: App
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              Configuration:
+                RepositoryName: !Ref ServiceName
+                BranchName: master
+              OutputArtifacts:
+                - Name: SCCheckoutArtifact
+              RunOrder: 1           
+              RoleArn: !Sub arn:aws:iam::${TestAccount}:role/${ServiceName}-codecommit-role   
+        -
+          Name: Build
+          Actions:
+          -
+            Name: Build
+            ActionTypeId:
+              Category: Build
+              Owner: AWS
+              Version: 1
+              Provider: CodeBuild
+            Configuration:
+              ProjectName: !Ref BuildProject
+            RunOrder: 1
+            InputArtifacts:
+              - Name: SCCheckoutArtifact
+            OutputArtifacts:
+              - Name: BuildOutput
+        - Name: DeployToTest
+          Actions:
+            - Name: CreateChangeSetTest
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ChangeSetName: !Sub "${ServiceName}-test"
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Sub "${ServiceName}-test"
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: BuildOutput::samtemplate.yaml
+                RoleArn: !Sub arn:aws:iam::${TestAccount}:role/${ServiceName}-cfdeployer-role
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1                        
+            - Name: DeployChangeSetTest
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ChangeSetName: !Sub "${ServiceName}-test"
+                ParameterOverrides: !Sub |
+                  {
+                      "StageName" : "Test",
+                  }
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: !Sub "${ServiceName}-test"
+                RoleArn: !Sub arn:aws:iam::${TestAccount}:role/${ServiceName}-cfdeployer-role
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 2
+            - Name: approve-publishing
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                CustomData: "Continue with publishing to staging?"
+              RunOrder: 3
+            - Name: CreateChangeSetStage
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ChangeSetName: !Sub "${ServiceName}-stage"
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Sub "${ServiceName}-stage"
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: BuildOutput::samtemplate.yaml
+                RoleArn: !Sub arn:aws:iam::${TestAccount}:role/${ServiceName}-cfdeployer-role
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 4
+            - Name: DeployChangeSetStage
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ChangeSetName: !Sub "${ServiceName}-stage"
+                ParameterOverrides: !Sub |
+                  {
+                      "StageName" : "Stage",
+                  }
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: !Sub "${ServiceName}-stage"
+                RoleArn: !Sub arn:aws:iam::${TestAccount}:role/${ServiceName}-cfdeployer-role
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 5
+        - Name: DeployToProduction
+          Actions:
+            - Name: approve-prod-publishing
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                CustomData: "Continue with publishing to production?"
+              RunOrder: 1
+            - Name: CreateChangeSetProd
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ChangeSetName: !Sub "${ServiceName}-prod"
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Sub "${ServiceName}-prod"
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: BuildOutput::samtemplate.yaml
+                RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/${ServiceName}-cfdeployer-role
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 2
+              RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/${ServiceName}-cc-role
+            - Name: DeployChangeSetProd
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ChangeSetName: !Sub "${ServiceName}-prod"
+                ParameterOverrides: !Sub |
+                  {
+                      "StageName" : "Prod",
+                  }
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: !Sub "${ServiceName}-prod"
+                RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/${ServiceName}-cfdeployer-role
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 3
+              RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/${ServiceName}-cc-role
+
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+        EncryptionKey:
+          Id: !Ref CMKARN
+          Type: KMS

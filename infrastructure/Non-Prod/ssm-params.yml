@@ -1,0 +1,104 @@
+Description: "Create SSM Parameters"
+Resources:
+  Cluster:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "Cluster"
+      Type: "String"
+      Value: "app-cluster"
+  DevLoadBalancerArn:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "DevLoadBalancerArn"
+      Type: "String"
+      Value: "arn:aws:elasticloadbalancing:eu-west-1:444769275529:loadbalancer/app/app-cluster/f391a92613e9f5cf"
+  DevBetaListenerArn:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "DevBetaListenerArn"
+      Type: "String"
+      Value: "arn:aws:elasticloadbalancing:eu-west-1:444769275529:listener/app/app-cluster/f391a92613e9f5cf/476cce2593bf94db"
+  DevLiveListenerArn:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "DevLiveListenerArn"
+      Type: "String"
+      Value: "arn:aws:elasticloadbalancing:eu-west-1:444769275529:listener/app/app-cluster/f391a92613e9f5cf/d71c2a0a54c62665"
+  ProdLoadBalancerArn:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "ProdLoadBalancerArn"
+      Type: "String"
+      Value: "arn:aws:elasticloadbalancing:eu-west-1:813745479501:loadbalancer/app/app-cluster/875445d99bb64a80"
+  ProdBetaListenerArn:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "ProdBetaListenerArn"
+      Type: "String"
+      Value: "arn:aws:elasticloadbalancing:eu-west-1:813745479501:listener/app/app-cluster/875445d99bb64a80/f9fada87b3bd0027"
+  ProdLiveListenerArn:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "ProdLiveListenerArn"
+      Type: "String"
+      Value: "arn:aws:elasticloadbalancing:eu-west-1:813745479501:listener/app/app-cluster/875445d99bb64a80/fe9303c68c852a03"
+  DevSubnet1:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "DevSubnet1"
+      Type: "String"
+      Value: "subnet-0ee9260d98b671d23"
+  DevSubnet2:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "DevSubnet2"
+      Type: "String"
+      Value: "subnet-0575758aa4d168dea"
+  DevVPC:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "DevVPC"
+      Type: "String"
+      Value: "vpc-0fa4d3f72d920ba90"
+  ProdSubnet1:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "ProdSubnet1"
+      Type: "String"
+      Value: "subnet-0bdcc02a11c0715c4"
+  ProdSubnet2:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "ProdSubnet2"
+      Type: "String"
+      Value: "subnet-04b5df39611687714"
+  ProdVPC:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "ProdVPC"
+      Type: "String"
+      Value: "vpc-06d97f21c206fcb76"
+  Priority:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "Priority"
+      Type: "String"
+      Value: "1"  
+  ProductionAccount:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "ProductionAccount"
+      Type: "String"
+      Value: "813745479501"
+  TemplateBucket:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "TemplateBucket"
+      Type: "String"
+      Value: "vending-pipelines-assets"
+  TestAccount:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: "TestAccount"
+      Type: "String"
+      Value: "444769275529"
